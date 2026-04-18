@@ -1,0 +1,271 @@
+AutoCDP Version 1 -- Platform Walkthrough
+==========================================
+For Executive and Non-Technical Stakeholders
+
+
+WHAT AUTOCDP IS AND WHY IT EXISTS
+----------------------------------
+
+AutoCDP is an autonomous marketing platform built specifically for
+automobile dealerships. Its job is to look at a dealership's existing
+customer data, figure out which customers are most likely to buy a car
+in the next 60 to 90 days, write them a personalized, legally compliant
+financial offer, and mail it to their home -- then track exactly which
+customers responded and drove back to the lot.
+
+The problem it solves is real and expensive. Most dealerships have
+thousands of past customers sitting in their computer systems whose
+ownership timelines, equity positions, and service histories are
+screaming "ready to buy" -- but nobody has the time or the tools to
+identify them, let alone write a personal offer for each one and send
+it at the right moment. Dealers either blast generic mailers to
+everyone (expensive, low return) or rely on salespeople to manually
+work old leads (inconsistent, time-consuming). AutoCDP replaces both
+of those approaches with a fully automated, data-driven process.
+
+Version 1 is the pilot. It serves one to five dealerships, proves the
+core prediction-plus-print loop works, and generates enough real-world
+results to validate the economics before any investment in scale.
+
+
+STEP ONE: THE DEALER UPLOADS THEIR DATA
+----------------------------------------
+
+AutoCDP never connects directly into a dealership's internal computer
+system. There are no software agents installed at the dealership, no
+live API connections, and no ongoing read access to the dealer's
+network. This is intentional. It eliminates a large category of
+security and liability risk, and it means the platform works with any
+dealership system that can export a CSV file -- which is all of them.
+
+The process is simple. An AutoCDP administrator generates a secure,
+time-limited upload link (valid for a short window, tied to that
+specific dealership's storage area). A dealership staff member uses
+that link to upload their customer export file -- typically a
+spreadsheet exported from their CRM system containing customer names,
+contact information, vehicle ownership records, and service history.
+The file goes directly into AutoCDP's Secure Data Vault (a
+private cloud storage area) without passing through any intermediate
+server.
+
+Once the upload completes, the platform automatically detects the new
+file and begins processing it. No human at AutoCDP needs to manually
+kick off the next step.
+
+
+STEP TWO: CLEANING THE DATA
+-----------------------------
+
+Dealership CRM exports are almost always messy. A customer might
+appear three times with slight variations in their name or address.
+Phone numbers may include or exclude dashes. Email addresses may be
+duplicated across records. Addresses may be incomplete or formatted
+inconsistently.
+
+AutoCDP's Data Cleaning Engine reads the uploaded file and runs it
+through a multi-stage scrubbing process. It standardizes name formats,
+normalizes phone and address fields, identifies and merges duplicate
+records (a customer who appears twice becomes a single clean record
+with both records' data consolidated), and flags rows that are too
+incomplete to be useful.
+
+The output of this stage is what AutoCDP calls a Golden Record for
+each unique customer: one clean, complete, deduplicated entry in the
+Secure Data Vault that represents everything the system knows about
+that person from across all the messy source rows.
+
+This cleaning step matters more than it might seem. The Predictive
+Math Engine that comes next is only as accurate as the data it reads.
+Duplicate records skew the predictions. Malformed addresses cause
+mail to be returned undelivered. Getting this stage right is what
+separates a reliable system from an expensive mistake.
+
+
+STEP THREE: IDENTIFYING LIKELY BUYERS
+---------------------------------------
+
+Once the customer data is clean, AutoCDP's Predictive Math Engine
+scores every customer record. The engine is a mathematical model
+trained on real automotive retail conversion data. It looks at a
+combination of signals for each customer:
+
+  - How long ago did they purchase or lease their current vehicle?
+  - If they are leasing, when does their lease end?
+  - Does the current value of their vehicle exceed what they owe on it
+    (positive equity)? By how much?
+  - How recently have they come in for service?
+  - How many service visits have they had in the past year?
+
+The engine combines these signals into a single number between 0 and 1
+for each customer -- their purchase likelihood score. A score of 0.90
+means the model believes there is a very high probability this customer
+is in a buying window. A score of 0.20 means the model sees few
+signals of near-term purchase intent.
+
+Every score is written to the Secure Data Vault alongside the specific
+signals that produced it, so the reasoning is always auditable.
+
+For Version 1, the Predictive Math Engine uses a pre-trained model --
+meaning the mathematical weights were computed in advance by our data
+science team using historical automotive retail data. The model is
+stable and does not update itself during Version 1 operations. That
+automatic learning capability is built into later versions.
+
+
+STEP FOUR: CHECKING THE DO-NOT-CONTACT LIST
+---------------------------------------------
+
+Before any customer is selected for a campaign, the platform checks
+two things.
+
+First, has this customer already received mail from this dealership
+recently? AutoCDP maintains a mandatory rest period of 45 days between
+mail contacts per customer. This is not configurable. A customer who
+received a mailer 20 days ago is automatically skipped, regardless of
+their prediction score. This prevents spam, protects the dealership's
+brand, and keeps AutoCDP off postal blacklists.
+
+Second, was this customer previously flagged as a do-not-contact? Any
+customer who has opted out is permanently excluded from all future
+campaigns without exception.
+
+Only customers who pass both checks AND have a prediction score above
+the configured threshold (default: 0.70) move forward to the offer
+generation step.
+
+
+STEP FIVE: WRITING THE OFFER
+------------------------------
+
+For each customer who passes the selection step, AutoCDP generates a
+personalized financial offer. This is where the AI writing system
+comes in.
+
+The AI writing system takes the customer's profile -- their vehicle,
+equity position, current payment, and projected new payment -- and
+composes a letter addressed to that specific person with specific
+numbers. A customer with $4,200 in positive equity leasing a 2022
+Honda CR-V gets a different letter than a customer who owns a 2019
+Ford F-150 outright. The offers are genuinely personalized, not just
+mail-merge templates.
+
+However, because these letters contain financial terms -- Annual
+Percentage Rate, monthly payment, loan term -- they are subject to
+federal law. Under the Truth-in-Lending Act (also known as Regulation
+Z), financial disclosures in any customer communication must meet
+specific accuracy and formatting requirements. Violations carry real
+legal liability for the dealership.
+
+AutoCDP addresses this with a mandatory Compliance Firewall. The AI
+writing system is never allowed to send copy directly to a customer.
+Every piece of generated copy is intercepted by a separate,
+deterministic rules engine that independently re-computes the APR,
+monthly payment, and total cost of financing from first principles --
+using the same inputs the AI used. The rules engine then compares its
+calculations to what the AI wrote.
+
+If the numbers match within acceptable tolerance and all required
+disclosures are present in the correct format: the copy is approved
+and moves forward.
+
+If any number is wrong, any required disclosure is missing, or any
+field fails a format check: the copy is rejected. The rejection is
+logged in detail, including exactly which check failed and what values
+were involved. The campaign record is flagged as compliance-failed and
+goes no further. No non-compliant offer ever reaches a customer.
+
+Every compliance decision -- pass or fail -- is recorded in a
+permanent, append-only audit log that cannot be modified after the
+fact. This log is available for regulatory review at any time.
+
+
+STEP SIX: SENDING THE MAIL
+----------------------------
+
+Once an offer clears the Compliance Firewall, AutoCDP submits it to
+the print-and-mail partner (Lob.com). Lob prints the letter, places
+it in an addressed envelope, and delivers it through standard postal
+mail. Lob returns a tracking identifier that AutoCDP stores alongside
+the campaign record.
+
+The letter includes a unique QR code printed directly on it. That QR
+code is specific to this campaign and this customer. When the customer
+scans it, the scan is recorded and the customer is redirected to the
+dealership's inventory page.
+
+The entire step -- submitting the offer, receiving the tracking
+confirmation, and updating the campaign record -- is automated.
+
+
+STEP SEVEN: TRACKING THE RESULT
+---------------------------------
+
+When a customer scans their QR code, AutoCDP's Tracking Service
+receives the request, logs it (including when it happened), and
+immediately sends the customer to the destination URL. The scan event
+is linked back to the specific campaign record and the specific
+customer who received the mailer.
+
+This creates a clean, auditable chain: dealer CSV upload -> clean
+record -> prediction score -> offer generated -> offer approved ->
+mailer sent -> QR scanned -> customer arrived at inventory. Every step
+is timestamped and logged.
+
+Dealership staff can view campaign performance through the analytics
+dashboard at any time:
+
+  - How many customers were scored above threshold this run?
+  - How many passed cooldown checks?
+  - How many offers cleared compliance?
+  - How many mailers were dispatched?
+  - How many QR codes have been scanned?
+  - How many scans have been converted to sales (manually attributed)?
+
+This gives both the dealership and the AutoCDP team full visibility
+into where customers are in the funnel and what the campaign is
+producing.
+
+
+WHAT IS NOT IN VERSION 1
+--------------------------
+
+Version 1 is deliberately scoped. The following capabilities are not
+present in Version 1 and are planned for later versions:
+
+  - Automatic data syncs from dealership systems (Version 2 adds this
+    via third-party aggregators; Version 1 requires manual CSV upload)
+  - Digital channels: text message and email (Version 3)
+  - Automated model retraining on real results (Version 3)
+  - Self-service dealer onboarding portal (Version 2)
+  - Multi-store group dashboards spanning many dealerships (Version 3)
+
+Version 1 is operated with AutoCDP staff assistance. Dealer upload,
+pipeline monitoring, and analytics review are handled through direct
+communication with the AutoCDP team.
+
+
+WHAT VERSION 1 COSTS AND WHAT IT PROVES
+-----------------------------------------
+
+Cloud infrastructure for Version 1 runs approximately $300 to $700
+per month regardless of campaign volume -- well within pilot economics.
+Print-and-mail costs are approximately $1.00 per piece and are passed
+through directly to the dealer's campaign budget. A dealership running
+5,000 to 10,000 mailers per month pays that cost directly to the mail
+partner; it does not pass through AutoCDP's margins.
+
+The Version 1 commercial structure is $15,000 per month per dealer.
+
+The goal of Version 1 is to produce three to five months of real
+campaign data that answers two questions:
+
+  1. Do the prediction scores actually correlate with real buyer
+     behavior? Are the customers scored above 0.70 buying at a
+     meaningfully higher rate than those scored below it?
+
+  2. Does direct mail with QR attribution produce a measurable,
+     attributable return on investment at the campaign level?
+
+When the answer to both questions is yes -- which the system is
+designed to demonstrate -- Version 2 automation and Version 3 scale
+become straightforward investments.

@@ -1,0 +1,634 @@
+openapi: "3.1.0"
+
+info:
+  title: AutoCDP V1 API
+  version: "1.0.0"
+  description: |
+    AutoCDP Version 1 REST API. Handles secure CSV upload via pre-signed URLs,
+    pipeline management, campaign retrieval, metrics aggregation, and QR scan
+    attribution.
+
+    Authentication: All endpoints except GET /api/v1/scan/{tracking_uuid}
+    require a valid API key header. The QR scan endpoint is publicly
+    accessible to allow customer devices to follow printed QR codes.
+
+servers:
+  - url: https://api.autocdp.com
+    description: Production
+  - url: https://api-staging.autocdp.com
+    description: Staging
+
+security:
+  - ApiKeyAuth: []
+
+components:
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key issued per AutoCDP admin user.
+
+  parameters:
+    DealerIdPath:
+      name: dealer_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Numeric dealer identifier
+
+    CampaignIdPath:
+      name: campaign_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ExecutionIdPath:
+      name: execution_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+
+    TrackingUuidPath:
+      name: tracking_uuid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [error_code, message, request_id]
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    PaginationMeta:
+      type: object
+      required: [page, page_size, total_records, total_pages]
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_records:
+          type: integer
+        total_pages:
+          type: integer
+
+    PresignedUrlRequest:
+      type: object
+      required: [dealer_id, filename]
+      properties:
+        dealer_id:
+          type: integer
+          minimum: 1
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[\w\-. ]+\.csv$'
+        ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+          default: 900
+
+    PresignedUrlResponse:
+      type: object
+      required: [presigned_url, s3_key, expires_at]
+      properties:
+        presigned_url:
+          type: string
+          format: uri
+        s3_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    PipelineTriggerRequest:
+      type: object
+      required: [dealer_id, s3_key]
+      properties:
+        dealer_id:
+          type: integer
+          minimum: 1
+        s3_key:
+          type: string
+        score_threshold:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.70
+        dry_run:
+          type: boolean
+          default: false
+
+    PipelineTriggerResponse:
+      type: object
+      required: [execution_id, execution_arn, status, started_at]
+      properties:
+        execution_id:
+          type: string
+        execution_arn:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING]
+        started_at:
+          type: string
+          format: date-time
+
+    PipelineStatus:
+      type: object
+      required: [execution_id, status, started_at]
+      properties:
+        execution_id:
+          type: string
+        execution_arn:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING, SUCCEEDED, FAILED, TIMED_OUT, ABORTED]
+        started_at:
+          type: string
+          format: date-time
+        stopped_at:
+          type: string
+          format: date-time
+          nullable: true
+        summary:
+          type: object
+          nullable: true
+          properties:
+            records_upserted:
+              type: integer
+            records_skipped_duplicate:
+              type: integer
+            records_scored:
+              type: integer
+            records_eligible:
+              type: integer
+            offers_generated:
+              type: integer
+            offers_compliance_passed:
+              type: integer
+            offers_compliance_failed:
+              type: integer
+            offers_dispatched:
+              type: integer
+        error:
+          type: object
+          nullable: true
+          properties:
+            cause:
+              type: string
+            error_code:
+              type: string
+
+    CampaignStatus:
+      type: string
+      enum:
+        - queued
+        - generated
+        - compliance_passed
+        - compliance_failed
+        - dispatched
+        - delivered
+        - scanned
+        - converted
+
+    CampaignSummary:
+      type: object
+      required: [campaign_id, record_id, channel, status, created_at]
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        record_id:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          enum: [mail]
+        status:
+          $ref: '#/components/schemas/CampaignStatus'
+        offer_apr:
+          type: number
+          format: float
+          nullable: true
+        offer_monthly_payment:
+          type: number
+          format: float
+          nullable: true
+        offer_term:
+          type: integer
+          nullable: true
+        lob_tracking_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        dispatched_at:
+          type: string
+          format: date-time
+          nullable: true
+        scanned_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CampaignDetail:
+      allOf:
+        - $ref: '#/components/schemas/CampaignSummary'
+        - type: object
+          properties:
+            copy_payload_json:
+              type: object
+              nullable: true
+              additionalProperties: true
+            compliance_result_json:
+              type: object
+              nullable: true
+              additionalProperties: true
+            qr_scans:
+              type: array
+              items:
+                type: object
+                required: [scan_id, scanned_at]
+                properties:
+                  scan_id:
+                    type: string
+                    format: uuid
+                  scanned_at:
+                    type: string
+                    format: date-time
+                  redirect_url:
+                    type: string
+                    format: uri
+
+    CampaignListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignSummary'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    DealerMetricsSummary:
+      type: object
+      required: [dealer_id, period_start, period_end, generated_at]
+      properties:
+        dealer_id:
+          type: integer
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        generated_at:
+          type: string
+          format: date-time
+        golden_records_total:
+          type: integer
+        campaigns_total:
+          type: integer
+        campaigns_by_status:
+          type: object
+          properties:
+            queued:
+              type: integer
+            generated:
+              type: integer
+            compliance_passed:
+              type: integer
+            compliance_failed:
+              type: integer
+            dispatched:
+              type: integer
+            delivered:
+              type: integer
+            scanned:
+              type: integer
+            converted:
+              type: integer
+        compliance_pass_rate:
+          type: number
+          format: float
+        qr_scan_rate:
+          type: number
+          format: float
+        conversion_rate:
+          type: number
+          format: float
+        avg_propensity_score_dispatched:
+          type: number
+          format: float
+          nullable: true
+
+paths:
+
+  /api/v1/upload/presigned-url:
+    post:
+      operationId: generatePresignedUrl
+      summary: Generate a pre-signed S3 upload URL for a dealer CSV
+      tags: [Upload]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresignedUrlRequest'
+      responses:
+        "200":
+          description: Pre-signed URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrlResponse'
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: dealer_id not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/scan/{tracking_uuid}:
+    get:
+      operationId: recordQrScan
+      summary: Record QR scan and redirect to dealer inventory
+      description: |
+        Public endpoint. Logs scan event, updates campaign status,
+        returns HTTP 302 redirect to dealer inventory URL.
+      tags: [QR Scan]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TrackingUuidPath'
+      responses:
+        "302":
+          description: Redirect to dealer inventory page
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "404":
+          description: tracking_uuid not found
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/v1/campaigns/{dealer_id}:
+    get:
+      operationId: listCampaigns
+      summary: List campaigns for a dealer with pagination
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/CampaignStatus'
+        - name: from_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Paginated campaign list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: dealer_id not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/campaigns/{dealer_id}/{campaign_id}:
+    get:
+      operationId: getCampaign
+      summary: Get full detail for a single campaign
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/CampaignIdPath'
+      responses:
+        "200":
+          description: Full campaign detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignDetail'
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: campaign_id not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/metrics/{dealer_id}/summary:
+    get:
+      operationId: getDealerMetricsSummary
+      summary: Get aggregated campaign metrics for a dealer
+      tags: [Metrics]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - name: from_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Dealer metrics summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealerMetricsSummary'
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: dealer_id not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/pipeline/trigger:
+    post:
+      operationId: triggerPipeline
+      summary: Manually trigger a pipeline execution
+      description: |
+        Starts a Step Functions execution for a CSV already uploaded to S3.
+        Normally triggered automatically on S3 ObjectCreated. This endpoint
+        allows manual re-trigger after config changes or for dry-run validation.
+      tags: [Pipeline]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineTriggerRequest'
+      responses:
+        "202":
+          description: Pipeline execution started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineTriggerResponse'
+        "400":
+          description: Validation error or s3_key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Pipeline already running for this dealer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/pipeline/{execution_id}/status:
+    get:
+      operationId: getPipelineStatus
+      summary: Poll pipeline execution status
+      description: |
+        Returns current status and, if completed, a summary of results.
+        Poll every 10-30 seconds. Execution takes 5-30 minutes depending
+        on CSV size.
+      tags: [Pipeline]
+      parameters:
+        - $ref: '#/components/parameters/ExecutionIdPath'
+      responses:
+        "200":
+          description: Pipeline execution status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineStatus'
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: execution_id not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: Upload
+    description: Dealer CSV upload via S3 pre-signed URLs
+  - name: QR Scan
+    description: QR code scan attribution and redirect
+  - name: Campaigns
+    description: Campaign record retrieval
+  - name: Metrics
+    description: Aggregated dealer performance metrics
+  - name: Pipeline
+    description: Pipeline execution management
