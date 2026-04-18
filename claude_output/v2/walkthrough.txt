@@ -1,0 +1,214 @@
+AutoCDP Version 2 -- Platform Walkthrough
+==========================================
+For Executive and Non-Technical Stakeholders
+
+
+WHAT CHANGED FROM VERSION 1
+-----------------------------
+
+Version 1 proved the core loop: our Predictive Math Engine accurately
+identifies likely buyers, the Compliance Firewall guarantees legally
+safe financial offers, and QR-tracked direct mail generates measurable
+ROI. But Version 1 had one major limitation: a human had to manually
+upload a spreadsheet every time the dealership wanted to run a campaign.
+
+Version 2 removes every human bottleneck. The system now runs itself.
+Data flows in automatically every night, scores update continuously,
+campaigns execute on a schedule, and the dealership's existing CRM
+system receives invisible status updates -- all without a single
+person touching a keyboard.
+
+This is where AutoCDP transitions from a consulting project into a
+true recurring-revenue software business.
+
+
+THE NEUTRAL DATA PLUMBER (AUTOMATED INGESTION)
+-----------------------------------------------
+
+Instead of asking a dealership manager to export a spreadsheet, we
+now partner with a neutral data extraction service. Think of them as
+a licensed plumber who has permission to read the pipes inside the
+dealership's computer system. Every night at 2:00 AM, the Data
+Plumber quietly extracts just the changes from yesterday -- who
+bought a car, who got service, who made a payment -- and drops that
+small update file into our Secure Data Vault.
+
+The word "neutral" matters strategically. We deliberately avoid
+partnering with companies that also do marketing or sell data to
+competitors. Our extraction partners are pure plumbers. They move
+data for a small flat fee and have zero incentive to steal our
+clients or compete with us. This protects our business from platform
+risk.
+
+The Data Plumber also allows us to completely bypass the legacy CRM
+monopolies. The big CRM companies (CDK Global, Reynolds & Reynolds)
+charge vendors $50,000 or more just for permission to read their
+data through official channels. Our plumber reads the same data
+through a neutral side door at a fraction of the cost.
+
+
+THE SYSTEM CLOCK (AUTOMATED SCHEDULING)
+-----------------------------------------
+
+Version 2 introduces what we call the System Clock -- an automated
+timer that triggers two recurring events:
+
+  1. The Nightly Sync (every night at 2:00 AM): Wakes up the Data
+     Cleaning Engine to process yesterday's changes. Scores are
+     recalculated for any customer whose data changed.
+
+  2. The Print Run (every two weeks): Selects all high-scoring
+     customers who are eligible for a campaign and pushes them
+     through the full offer generation, compliance check, and
+     print-and-mail pipeline.
+
+The two-week cadence for print runs is deliberate. Direct mail has
+inherent delivery latency (3-7 business days), so daily print runs
+would waste money on customers who already have mail in transit.
+Bi-weekly batching optimizes cost-per-acquisition while maintaining
+campaign freshness.
+
+
+THE SPAM PREVENTION LEDGER
+----------------------------
+
+Before any customer is selected for a print run, the system consults
+a mandatory Spam Prevention Ledger. This ledger records when each
+customer last received a mailer and enforces a strict 45-day rest
+period. A customer who received a letter 20 days ago is automatically
+blocked from the current print run, no matter how high their
+prediction score.
+
+This is not configurable and cannot be overridden. It prevents
+budget waste, protects the dealership's brand reputation, and ensures
+compliance with postal marketing best practices.
+
+
+THE INVISIBLE CRM BACKDOOR (WRITE-BACK HACK)
+----------------------------------------------
+
+This is one of the most strategically important features in the
+entire platform.
+
+When a dealership salesperson logs into their CRM system (CDK,
+Reynolds, DealerTrack), they can see notes attached to each customer
+record. These notes are how sales teams coordinate -- "Called John on
+Tuesday," "Sent lease offer last month," etc.
+
+The problem: writing notes into these CRM systems through their
+official programming interfaces costs thousands of dollars per month
+in integration fees. The CRM monopolies treat write access as a
+premium toll road.
+
+AutoCDP bypasses this entirely using a 25-year-old industry standard.
+Every major CRM system can receive leads via email in a specific
+format called ADF XML (Auto-lead Data Format, circa 1999). When
+AutoCDP mails a letter to a customer, it simultaneously sends an
+invisible email to the dealership CRM's lead intake address. That
+email contains a structured note: "AUTO-NOTE: Customer mailed Lease
+Buyback offer on [date]. Tracking ID: [uuid]."
+
+The CRM receives this email, automatically parses the XML, and drops
+the note directly onto the customer's profile. The sales team sees
+the note the next morning. From their perspective, it simply appeared.
+They have full visibility into what AutoCDP sent, without AutoCDP
+paying a single dollar in CRM integration fees.
+
+This hack works because every CRM vendor supports ADF XML email
+intake -- it is how internet leads from third-party websites have
+been routed to dealerships since the early 2000s. We are simply
+using a lead routing feature for internal note-taking.
+
+
+THE SELF-SERVICE DASHBOARD
+----------------------------
+
+Version 2 adds a web portal where dealership General Managers can
+log in and manage their account. The dashboard provides:
+
+  - Campaign performance metrics (mailers sent, QR scans, conversions)
+  - Budget approval controls (the GM sets a monthly spend cap)
+  - Sync health monitoring (confirmation that nightly data is flowing)
+  - Historical campaign records with compliance audit trail
+
+The portal uses a secure authentication system with role-based access.
+A General Manager can approve budgets and view reports. A viewer-only
+account can see metrics but cannot change settings.
+
+The dashboard is intentionally simple. Dealership staff should not
+need to learn a complex tool. The entire value proposition is that
+AutoCDP runs itself; the dashboard exists for visibility and budget
+governance, not for daily operation.
+
+
+END-TO-END FLOW (HOW A TYPICAL NIGHT WORKS)
+---------------------------------------------
+
+  1. 2:00 AM: The Data Plumber extracts yesterday's changes from the
+     dealership's CRM and drops the file into the Secure Data Vault.
+
+  2. 2:05 AM: The System Clock detects the new file and wakes up the
+     Data Cleaning Engine. It processes the changes: Sarah got an oil
+     change yesterday, Mike made his final lease payment.
+
+  3. 2:15 AM: The Predictive Math Engine re-scores affected customers.
+     Sarah's score jumps from 0.40 to 0.91 (frequent service + high
+     equity). Mike's score jumps to 0.88 (lease maturity).
+
+  4. Every two weeks (Print Run): The system selects all customers
+     with scores above 0.70 who pass the 45-day Spam Prevention
+     check. Sarah and Mike both qualify.
+
+  5. The AI writes personalized offers for Sarah and Mike. The
+     Compliance Firewall validates the financial math. Both pass.
+
+  6. Letters are printed and mailed. Simultaneously, invisible XML
+     emails are sent to the CRM: "AUTO-NOTE: Customer mailed Lease
+     Buyback offer."
+
+  7. The next morning, the sales team sees the notes in their CRM.
+     Sarah's salesperson knows she received an offer and can follow
+     up accordingly.
+
+  8. Sarah scans her QR code three days later. The system logs the
+     attribution, updates the campaign record, and redirects her to
+     the dealership's inventory page.
+
+
+WHAT VERSION 2 COSTS
+----------------------
+
+Cloud infrastructure for Version 2 runs approximately $1,500 to
+$6,000 per month depending on the number of active dealerships. This
+includes the automated scheduling system, the web portal, and the
+CRM write-back email service.
+
+At 50 dealerships paying $15,000/month each, that is $750,000 per
+month in revenue against $6,000 in cloud costs -- a 99.2% gross
+margin on infrastructure. The primary cost of goods sold remains the
+print fulfillment (approximately $1.00 per piece), which is passed
+through to the dealer's campaign budget.
+
+The Data Plumber extraction service costs approximately $200-500 per
+dealership per month, which is included in the $15,000 monthly fee.
+
+
+WHAT VERSION 2 PROVES
+-----------------------
+
+Version 2 proves three things that are critical for scaling to
+Version 3:
+
+  1. The platform can operate with zero human intervention for weeks
+     at a time. This is what transforms a services company into a
+     software company with SaaS-grade valuation multiples.
+
+  2. The CRM write-back hack works reliably at scale. If sales teams
+     have visibility into AutoCDP's actions without us paying CRM
+     integration fees, our cost structure is permanently protected.
+
+  3. Nightly delta processing keeps prediction scores fresh. As
+     customer behavior changes (service visits, payments, trade-in
+     inquiries), the system notices within 24 hours. This continuous
+     data flow is the foundation for Version 3's automated model
+     retraining.

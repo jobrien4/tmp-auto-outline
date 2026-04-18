@@ -1,0 +1,745 @@
+openapi: "3.1.0"
+
+info:
+  title: AutoCDP V2 API
+  version: "2.0.0"
+  description: |
+    AutoCDP Version 2 REST API. Extends V1 with Cognito JWT authentication,
+    dealer self-serve dashboard, budget approval, sync monitoring, and
+    all V1 endpoints carried forward.
+
+servers:
+  - url: https://api.autocdp.com
+    description: Production
+  - url: https://api-staging.autocdp.com
+    description: Staging
+
+security:
+  - CognitoJWT: []
+
+components:
+
+  securitySchemes:
+    CognitoJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito JWT. Contains dealer_id and role claims.
+
+  parameters:
+    DealerIdPath:
+      name: dealer_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    CampaignIdPath:
+      name: campaign_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ExecutionIdPath:
+      name: execution_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    TrackingUuidPath:
+      name: tracking_uuid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [error_code, message, request_id]
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_records:
+          type: integer
+        total_pages:
+          type: integer
+
+    # --- Auth schemas ---
+
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        dealer_id:
+          type: integer
+        role:
+          type: string
+          enum: [admin, manager, viewer]
+        dealer_name:
+          type: string
+        last_login_at:
+          type: string
+          format: date-time
+
+    # --- Dashboard schemas ---
+
+    DashboardSummary:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        dealer_name:
+          type: string
+        active_campaigns_count:
+          type: integer
+        dispatched_this_month:
+          type: integer
+        scans_this_month:
+          type: integer
+        conversions_this_month:
+          type: integer
+        budget_remaining:
+          type: number
+          format: float
+        budget_total:
+          type: number
+          format: float
+        last_sync:
+          type: object
+          properties:
+            sync_id:
+              type: string
+              format: uuid
+            status:
+              type: string
+            started_at:
+              type: string
+              format: date-time
+            records_processed:
+              type: integer
+        next_print_run:
+          type: string
+          format: date-time
+
+    # --- Budget schemas ---
+
+    BudgetApprovalRequest:
+      type: object
+      required: [budget_amount]
+      properties:
+        budget_amount:
+          type: number
+          format: float
+          minimum: 1000
+        budget_period:
+          type: string
+          enum: [monthly, campaign]
+          default: monthly
+        mail_pieces_approved:
+          type: integer
+          minimum: 100
+
+    BudgetApprovalResponse:
+      type: object
+      properties:
+        approval_id:
+          type: string
+          format: uuid
+        dealer_id:
+          type: integer
+        budget_amount:
+          type: number
+          format: float
+        budget_period:
+          type: string
+        mail_pieces_approved:
+          type: integer
+        approved_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+
+    BudgetStatus:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        current_approval:
+          $ref: '#/components/schemas/BudgetApprovalResponse'
+        spent_this_period:
+          type: number
+          format: float
+        pieces_sent_this_period:
+          type: integer
+        remaining_budget:
+          type: number
+          format: float
+        remaining_pieces:
+          type: integer
+
+    # --- Sync schemas ---
+
+    SyncStatus:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        aggregator_source:
+          type: string
+        last_sync:
+          type: object
+          properties:
+            sync_id:
+              type: string
+              format: uuid
+            source:
+              type: string
+            status:
+              type: string
+              enum: [pending, processing, completed, failed, partial]
+            records_received:
+              type: integer
+            records_processed:
+              type: integer
+            records_failed:
+              type: integer
+            started_at:
+              type: string
+              format: date-time
+            completed_at:
+              type: string
+              format: date-time
+        syncs_last_7_days:
+          type: integer
+        failed_syncs_last_7_days:
+          type: integer
+
+    SyncHistoryEntry:
+      type: object
+      properties:
+        sync_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+        file_path:
+          type: string
+        records_received:
+          type: integer
+        records_processed:
+          type: integer
+        records_failed:
+          type: integer
+        records_new:
+          type: integer
+        records_updated:
+          type: integer
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    SyncHistoryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncHistoryEntry'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # --- V1 schemas carried forward ---
+
+    PresignedUrlRequest:
+      type: object
+      required: [dealer_id, filename]
+      properties:
+        dealer_id:
+          type: integer
+        filename:
+          type: string
+          pattern: '^[\w\-. ]+\.csv$'
+        ttl_seconds:
+          type: integer
+          default: 900
+
+    PresignedUrlResponse:
+      type: object
+      properties:
+        presigned_url:
+          type: string
+          format: uri
+        s3_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    CampaignStatus:
+      type: string
+      enum: [queued, generated, compliance_passed, compliance_failed,
+             dispatched, delivered, scanned, converted]
+
+    CampaignSummary:
+      type: object
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        record_id:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          enum: [mail]
+        status:
+          $ref: '#/components/schemas/CampaignStatus'
+        offer_apr:
+          type: number
+          nullable: true
+        offer_monthly_payment:
+          type: number
+          nullable: true
+        lob_tracking_id:
+          type: string
+          format: uuid
+          nullable: true
+        crm_writeback_status:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        dispatched_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CampaignListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignSummary'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    DealerMetricsSummary:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        golden_records_total:
+          type: integer
+        campaigns_total:
+          type: integer
+        campaigns_by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        compliance_pass_rate:
+          type: number
+        qr_scan_rate:
+          type: number
+        conversion_rate:
+          type: number
+
+    PipelineTriggerRequest:
+      type: object
+      required: [dealer_id, s3_key]
+      properties:
+        dealer_id:
+          type: integer
+        s3_key:
+          type: string
+        score_threshold:
+          type: number
+          default: 0.70
+        dry_run:
+          type: boolean
+          default: false
+
+    PipelineStatus:
+      type: object
+      properties:
+        execution_id:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING, SUCCEEDED, FAILED, TIMED_OUT, ABORTED]
+        started_at:
+          type: string
+          format: date-time
+        stopped_at:
+          type: string
+          format: date-time
+          nullable: true
+        summary:
+          type: object
+          nullable: true
+
+paths:
+
+  # --- V2 Auth endpoints ---
+
+  /api/v1/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Get current authenticated user profile
+      tags: [Auth]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --- V2 Dashboard endpoints ---
+
+  /api/v1/dashboard/{dealer_id}:
+    get:
+      operationId: getDashboard
+      summary: Get dealer dashboard summary
+      tags: [Dashboard]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: User not authorized for this dealer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --- V2 Budget endpoints ---
+
+  /api/v1/campaigns/{dealer_id}/approve:
+    post:
+      operationId: approveBudget
+      summary: Approve campaign budget for a dealer
+      description: Requires manager or admin role.
+      tags: [Budget]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetApprovalRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetApprovalResponse'
+        "403":
+          description: Viewer role cannot approve budgets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/campaigns/{dealer_id}/budget:
+    get:
+      operationId: getBudgetStatus
+      summary: Get current budget status for a dealer
+      tags: [Budget]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetStatus'
+
+  # --- V2 Sync endpoints ---
+
+  /api/v1/sync/{dealer_id}/status:
+    get:
+      operationId: getSyncStatus
+      summary: Get latest sync health for a dealer
+      tags: [Sync]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatus'
+
+  /api/v1/sync/{dealer_id}/history:
+    get:
+      operationId: getSyncHistory
+      summary: Get sync history with pagination
+      tags: [Sync]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncHistoryResponse'
+
+  /api/v1/sync/{dealer_id}/trigger:
+    post:
+      operationId: triggerManualSync
+      summary: Manually trigger a resync for a dealer
+      description: Requires admin role. Re-processes the latest aggregator file.
+      tags: [Sync]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "202":
+          description: Sync triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  execution_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [RUNNING]
+        "403":
+          description: Only admins can trigger manual sync
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --- V1 endpoints carried forward ---
+
+  /api/v1/upload/presigned-url:
+    post:
+      operationId: generatePresignedUrl
+      summary: Generate S3 pre-signed upload URL
+      tags: [Upload]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresignedUrlRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrlResponse'
+
+  /api/v1/scan/{tracking_uuid}:
+    get:
+      operationId: recordQrScan
+      summary: QR scan redirect (public, no auth)
+      tags: [QR Scan]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TrackingUuidPath'
+      responses:
+        "302":
+          description: Redirect to dealer inventory
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "404":
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/v1/campaigns/{dealer_id}:
+    get:
+      operationId: listCampaigns
+      summary: List campaigns with pagination
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CampaignStatus'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+
+  /api/v1/campaigns/{dealer_id}/{campaign_id}:
+    get:
+      operationId: getCampaign
+      summary: Get campaign detail
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/CampaignIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Full campaign detail with compliance result and QR scans
+
+  /api/v1/metrics/{dealer_id}/summary:
+    get:
+      operationId: getDealerMetrics
+      summary: Aggregated dealer metrics
+      tags: [Metrics]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - name: from_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealerMetricsSummary'
+
+  /api/v1/pipeline/trigger:
+    post:
+      operationId: triggerPipeline
+      summary: Manually trigger pipeline
+      tags: [Pipeline]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineTriggerRequest'
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  execution_id:
+                    type: string
+                  status:
+                    type: string
+
+  /api/v1/pipeline/{execution_id}/status:
+    get:
+      operationId: getPipelineStatus
+      summary: Poll pipeline status
+      tags: [Pipeline]
+      parameters:
+        - $ref: '#/components/parameters/ExecutionIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineStatus'
+
+tags:
+  - name: Auth
+    description: Authentication and user profile
+  - name: Dashboard
+    description: Dealer self-serve dashboard
+  - name: Budget
+    description: Campaign budget approval and tracking
+  - name: Sync
+    description: Aggregator sync monitoring
+  - name: Upload
+    description: CSV upload (V1, still available)
+  - name: QR Scan
+    description: QR code attribution
+  - name: Campaigns
+    description: Campaign records
+  - name: Metrics
+    description: Performance metrics
+  - name: Pipeline
+    description: Pipeline execution
