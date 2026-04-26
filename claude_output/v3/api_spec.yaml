@@ -1,0 +1,1572 @@
+openapi: "3.1.0"
+
+info:
+  title: AutoCDP V3 API
+  version: "3.0.0"
+  description: |
+    AutoCDP Version 3 REST API. Extends V2 with multi-channel campaign support
+    (SMS, email), channel routing analytics, ML model registry, dealer group
+    management, and enterprise CEO analytics powered by Snowflake.
+
+servers:
+  - url: https://api.autocdp.com
+    description: Production
+  - url: https://api-staging.autocdp.com
+    description: Staging
+
+security:
+  - CognitoJWT: []
+
+components:
+
+  securitySchemes:
+    CognitoJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito JWT. Contains dealer_id, group_id, and role claims.
+
+  parameters:
+    DealerIdPath:
+      name: dealer_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    GroupIdPath:
+      name: group_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    CampaignIdPath:
+      name: campaign_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ExecutionIdPath:
+      name: execution_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    TrackingUuidPath:
+      name: tracking_uuid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ModelVersionIdPath:
+      name: version_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+    ChannelFilter:
+      name: channel
+      in: query
+      schema:
+        type: string
+        enum: [mail, sms, email]
+
+    FromDateParam:
+      name: from_date
+      in: query
+      schema:
+        type: string
+        format: date
+
+    ToDateParam:
+      name: to_date
+      in: query
+      schema:
+        type: string
+        format: date
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [error_code, message, request_id]
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_records:
+          type: integer
+        total_pages:
+          type: integer
+
+    # --- Auth schemas ---
+
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        dealer_id:
+          type: integer
+        group_id:
+          type: integer
+          nullable: true
+        role:
+          type: string
+          enum: [admin, manager, viewer, group_admin]
+        dealer_name:
+          type: string
+        last_login_at:
+          type: string
+          format: date-time
+
+    # --- Dashboard schemas ---
+
+    DashboardSummary:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        dealer_name:
+          type: string
+        active_campaigns_count:
+          type: integer
+        dispatched_this_month:
+          type: integer
+        dispatched_by_channel:
+          type: object
+          properties:
+            mail:
+              type: integer
+            sms:
+              type: integer
+            email:
+              type: integer
+        scans_this_month:
+          type: integer
+        conversions_this_month:
+          type: integer
+        budget_remaining:
+          type: number
+          format: float
+        budget_total:
+          type: number
+          format: float
+        channel_cost_this_month:
+          type: object
+          properties:
+            mail:
+              type: number
+              format: float
+            sms:
+              type: number
+              format: float
+            email:
+              type: number
+              format: float
+        last_sync:
+          type: object
+          properties:
+            sync_id:
+              type: string
+              format: uuid
+            status:
+              type: string
+            started_at:
+              type: string
+              format: date-time
+            records_processed:
+              type: integer
+        next_campaign_run:
+          type: string
+          format: date-time
+        active_model_version:
+          type: string
+          format: uuid
+
+    # --- Budget schemas ---
+
+    BudgetApprovalRequest:
+      type: object
+      required: [budget_amount]
+      properties:
+        budget_amount:
+          type: number
+          format: float
+          minimum: 1000
+        budget_period:
+          type: string
+          enum: [monthly, campaign]
+          default: monthly
+        mail_pieces_approved:
+          type: integer
+          minimum: 100
+        sms_approved:
+          type: integer
+          minimum: 100
+        email_approved:
+          type: integer
+          minimum: 100
+
+    BudgetApprovalResponse:
+      type: object
+      properties:
+        approval_id:
+          type: string
+          format: uuid
+        dealer_id:
+          type: integer
+        budget_amount:
+          type: number
+          format: float
+        budget_period:
+          type: string
+        mail_pieces_approved:
+          type: integer
+        sms_approved:
+          type: integer
+        email_approved:
+          type: integer
+        approved_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+
+    BudgetStatus:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        current_approval:
+          $ref: '#/components/schemas/BudgetApprovalResponse'
+        spent_this_period:
+          type: number
+          format: float
+        pieces_sent_this_period:
+          type: object
+          properties:
+            mail:
+              type: integer
+            sms:
+              type: integer
+            email:
+              type: integer
+        remaining_budget:
+          type: number
+          format: float
+
+    # --- Sync schemas ---
+
+    SyncStatus:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        aggregator_source:
+          type: string
+        last_sync:
+          type: object
+          properties:
+            sync_id:
+              type: string
+              format: uuid
+            source:
+              type: string
+            status:
+              type: string
+              enum: [pending, processing, completed, failed, partial]
+            records_received:
+              type: integer
+            records_processed:
+              type: integer
+            records_failed:
+              type: integer
+            started_at:
+              type: string
+              format: date-time
+            completed_at:
+              type: string
+              format: date-time
+        syncs_last_7_days:
+          type: integer
+        failed_syncs_last_7_days:
+          type: integer
+
+    SyncHistoryEntry:
+      type: object
+      properties:
+        sync_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+        file_path:
+          type: string
+        records_received:
+          type: integer
+        records_processed:
+          type: integer
+        records_failed:
+          type: integer
+        records_new:
+          type: integer
+        records_updated:
+          type: integer
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    SyncHistoryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncHistoryEntry'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # --- Campaign schemas (V3 multi-channel) ---
+
+    CampaignStatus:
+      type: string
+      enum: [queued, generated, compliance_passed, compliance_failed,
+             dispatched, delivered, scanned, converted]
+
+    CampaignChannel:
+      type: string
+      enum: [mail, sms, email]
+
+    CampaignSummary:
+      type: object
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        record_id:
+          type: string
+          format: uuid
+        channel:
+          $ref: '#/components/schemas/CampaignChannel'
+        status:
+          $ref: '#/components/schemas/CampaignStatus'
+        offer_apr:
+          type: number
+          nullable: true
+        offer_monthly_payment:
+          type: number
+          nullable: true
+        channel_cost:
+          type: number
+          format: float
+          nullable: true
+        lob_tracking_id:
+          type: string
+          format: uuid
+          nullable: true
+        twilio_sid:
+          type: string
+          nullable: true
+        sendgrid_id:
+          type: string
+          nullable: true
+        crm_writeback_status:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        dispatched_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CampaignListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignSummary'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # --- Channel Routing schemas ---
+
+    ChannelRoutingEntry:
+      type: object
+      properties:
+        routing_id:
+          type: string
+          format: uuid
+        record_id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+          nullable: true
+        evaluated_channels:
+          type: array
+          items:
+            type: object
+            properties:
+              channel:
+                $ref: '#/components/schemas/CampaignChannel'
+              available:
+                type: boolean
+              cooldown_expires_at:
+                type: string
+                format: date-time
+                nullable: true
+              predicted_conversion_rate:
+                type: number
+                format: float
+              cost:
+                type: number
+                format: float
+              expected_roi:
+                type: number
+                format: float
+        selected_channel:
+          $ref: '#/components/schemas/CampaignChannel'
+        selection_reason:
+          type: string
+        cost_estimate:
+          type: number
+          format: float
+        created_at:
+          type: string
+          format: date-time
+
+    ChannelRoutingResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelRoutingEntry'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    ChannelRoutingSummary:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        total_decisions:
+          type: integer
+        by_channel:
+          type: object
+          properties:
+            mail:
+              type: object
+              properties:
+                count:
+                  type: integer
+                total_cost:
+                  type: number
+                  format: float
+                avg_conversion_rate:
+                  type: number
+                  format: float
+            sms:
+              type: object
+              properties:
+                count:
+                  type: integer
+                total_cost:
+                  type: number
+                  format: float
+                avg_conversion_rate:
+                  type: number
+                  format: float
+            email:
+              type: object
+              properties:
+                count:
+                  type: integer
+                total_cost:
+                  type: number
+                  format: float
+                avg_conversion_rate:
+                  type: number
+                  format: float
+
+    # --- Model Registry schemas ---
+
+    ModelVersion:
+      type: object
+      properties:
+        version_id:
+          type: string
+          format: uuid
+        model_type:
+          type: string
+          enum: [xgboost, lightgbm]
+        s3_artifact_path:
+          type: string
+        training_dataset_range_start:
+          type: string
+          format: date
+        training_dataset_range_end:
+          type: string
+          format: date
+        training_row_count:
+          type: integer
+        metrics:
+          type: object
+          properties:
+            precision:
+              type: number
+            recall:
+              type: number
+            f1:
+              type: number
+            auc:
+              type: number
+            lift_vs_previous:
+              type: number
+              nullable: true
+        is_active:
+          type: boolean
+        deployed_at:
+          type: string
+          format: date-time
+          nullable: true
+        retired_at:
+          type: string
+          format: date-time
+          nullable: true
+        deployed_by:
+          type: string
+          enum: [auto, manual, rejected]
+        created_at:
+          type: string
+          format: date-time
+
+    ModelVersionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelVersion'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # --- Dealer Group schemas ---
+
+    DealerGroup:
+      type: object
+      properties:
+        group_id:
+          type: integer
+        name:
+          type: string
+        dealer_count:
+          type: integer
+        config:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    DealerGroupCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        dealer_ids:
+          type: array
+          items:
+            type: integer
+        config:
+          type: object
+
+    DealerGroupMember:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        dealer_name:
+          type: string
+        schema_name:
+          type: string
+
+    # --- Analytics schemas (Snowflake-powered) ---
+
+    AnalyticsOverview:
+      type: object
+      properties:
+        group_id:
+          type: integer
+        dealer_count:
+          type: integer
+        total_campaigns:
+          type: integer
+        total_conversions:
+          type: integer
+        overall_conversion_rate:
+          type: number
+          format: float
+        total_spend:
+          type: number
+          format: float
+        roi_by_channel:
+          type: object
+          properties:
+            mail:
+              type: object
+              properties:
+                campaigns:
+                  type: integer
+                conversions:
+                  type: integer
+                cost:
+                  type: number
+                  format: float
+                cost_per_conversion:
+                  type: number
+                  format: float
+            sms:
+              type: object
+              properties:
+                campaigns:
+                  type: integer
+                conversions:
+                  type: integer
+                cost:
+                  type: number
+                  format: float
+                cost_per_conversion:
+                  type: number
+                  format: float
+            email:
+              type: object
+              properties:
+                campaigns:
+                  type: integer
+                conversions:
+                  type: integer
+                cost:
+                  type: number
+                  format: float
+                cost_per_conversion:
+                  type: number
+                  format: float
+        active_model_accuracy:
+          type: number
+          format: float
+
+    ChannelROIEntry:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        channel:
+          $ref: '#/components/schemas/CampaignChannel'
+        month:
+          type: string
+          format: date
+        campaigns_sent:
+          type: integer
+        conversions:
+          type: integer
+        total_cost:
+          type: number
+          format: float
+        cost_per_conversion:
+          type: number
+          format: float
+          nullable: true
+        conversion_rate:
+          type: number
+          format: float
+
+    ModelPerformanceEntry:
+      type: object
+      properties:
+        model_version:
+          type: string
+          format: uuid
+        month:
+          type: string
+          format: date
+        records_scored:
+          type: integer
+        avg_predicted_score:
+          type: number
+          format: float
+        actual_conversion_rate:
+          type: number
+          format: float
+        precision_at_70:
+          type: number
+          format: float
+
+    DealerRanking:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        dealer_name:
+          type: string
+        total_customers:
+          type: integer
+        total_campaigns:
+          type: integer
+        total_conversions:
+          type: integer
+        conversion_rate:
+          type: number
+          format: float
+        total_spend:
+          type: number
+          format: float
+
+    # --- V1 schemas carried forward ---
+
+    PresignedUrlRequest:
+      type: object
+      required: [dealer_id, filename]
+      properties:
+        dealer_id:
+          type: integer
+        filename:
+          type: string
+          pattern: '^[\w\-. ]+\.csv$'
+        ttl_seconds:
+          type: integer
+          default: 900
+
+    PresignedUrlResponse:
+      type: object
+      properties:
+        presigned_url:
+          type: string
+          format: uri
+        s3_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    DealerMetricsSummary:
+      type: object
+      properties:
+        dealer_id:
+          type: integer
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        golden_records_total:
+          type: integer
+        campaigns_total:
+          type: integer
+        campaigns_by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        campaigns_by_channel:
+          type: object
+          properties:
+            mail:
+              type: integer
+            sms:
+              type: integer
+            email:
+              type: integer
+        compliance_pass_rate:
+          type: number
+        qr_scan_rate:
+          type: number
+        conversion_rate:
+          type: number
+
+    PipelineTriggerRequest:
+      type: object
+      required: [dealer_id, s3_key]
+      properties:
+        dealer_id:
+          type: integer
+        s3_key:
+          type: string
+        score_threshold:
+          type: number
+          default: 0.70
+        dry_run:
+          type: boolean
+          default: false
+
+    PipelineStatus:
+      type: object
+      properties:
+        execution_id:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING, SUCCEEDED, FAILED, TIMED_OUT, ABORTED]
+        started_at:
+          type: string
+          format: date-time
+        stopped_at:
+          type: string
+          format: date-time
+          nullable: true
+        summary:
+          type: object
+          nullable: true
+
+paths:
+
+  # --- V2 Auth endpoints ---
+
+  /api/v1/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Get current authenticated user profile
+      tags: [Auth]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --- V2 Dashboard endpoints ---
+
+  /api/v1/dashboard/{dealer_id}:
+    get:
+      operationId: getDashboard
+      summary: Get dealer dashboard summary with multi-channel breakdown
+      tags: [Dashboard]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: User not authorized for this dealer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --- V2 Budget endpoints ---
+
+  /api/v1/campaigns/{dealer_id}/approve:
+    post:
+      operationId: approveBudget
+      summary: Approve campaign budget for a dealer (now with per-channel limits)
+      tags: [Budget]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetApprovalRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetApprovalResponse'
+        "403":
+          description: Viewer role cannot approve budgets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/campaigns/{dealer_id}/budget:
+    get:
+      operationId: getBudgetStatus
+      summary: Get current budget status with per-channel breakdown
+      tags: [Budget]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetStatus'
+
+  # --- V2 Sync endpoints ---
+
+  /api/v1/sync/{dealer_id}/status:
+    get:
+      operationId: getSyncStatus
+      summary: Get latest sync health for a dealer
+      tags: [Sync]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatus'
+
+  /api/v1/sync/{dealer_id}/history:
+    get:
+      operationId: getSyncHistory
+      summary: Get sync history with pagination
+      tags: [Sync]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncHistoryResponse'
+
+  /api/v1/sync/{dealer_id}/trigger:
+    post:
+      operationId: triggerManualSync
+      summary: Manually trigger a resync for a dealer
+      tags: [Sync]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+      responses:
+        "202":
+          description: Sync triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  execution_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [RUNNING]
+        "403":
+          description: Only admins can trigger manual sync
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --- V3 Channel Routing endpoints ---
+
+  /api/v1/routing/{dealer_id}/log:
+    get:
+      operationId: getRoutingLog
+      summary: Get channel routing decision log for a dealer
+      tags: [Channel Routing]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - $ref: '#/components/parameters/ChannelFilter'
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelRoutingResponse'
+
+  /api/v1/routing/{dealer_id}/summary:
+    get:
+      operationId: getRoutingSummary
+      summary: Get aggregated routing summary by channel
+      tags: [Channel Routing]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelRoutingSummary'
+
+  # --- V3 Model Registry endpoints ---
+
+  /api/v1/models:
+    get:
+      operationId: listModelVersions
+      summary: List all model versions with training metrics
+      tags: [Model Registry]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionListResponse'
+
+  /api/v1/models/{version_id}:
+    get:
+      operationId: getModelVersion
+      summary: Get details for a specific model version
+      tags: [Model Registry]
+      parameters:
+        - $ref: '#/components/parameters/ModelVersionIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersion'
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/models/active:
+    get:
+      operationId: getActiveModel
+      summary: Get the currently active model version
+      tags: [Model Registry]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersion'
+
+  /api/v1/models/{version_id}/promote:
+    post:
+      operationId: promoteModelVersion
+      summary: Manually promote a model version to active
+      description: Requires admin role. Retires the current active model.
+      tags: [Model Registry]
+      parameters:
+        - $ref: '#/components/parameters/ModelVersionIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersion'
+        "403":
+          description: Only admins can promote models
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/models/retrain:
+    post:
+      operationId: triggerRetraining
+      summary: Manually trigger an ML retraining pipeline run
+      description: Requires admin role. Starts a SageMaker Pipeline execution.
+      tags: [Model Registry]
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pipeline_execution_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [EXECUTING]
+        "403":
+          description: Only admins can trigger retraining
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # --- V3 Dealer Group endpoints ---
+
+  /api/v1/groups:
+    get:
+      operationId: listDealerGroups
+      summary: List dealer groups
+      description: Requires group_admin or admin role.
+      tags: [Dealer Groups]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DealerGroup'
+    post:
+      operationId: createDealerGroup
+      summary: Create a new dealer group
+      description: Requires admin role.
+      tags: [Dealer Groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DealerGroupCreateRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealerGroup'
+        "403":
+          description: Only admins can create groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/groups/{group_id}:
+    get:
+      operationId: getDealerGroup
+      summary: Get a dealer group with member list
+      tags: [Dealer Groups]
+      parameters:
+        - $ref: '#/components/parameters/GroupIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/DealerGroup'
+                  - type: object
+                    properties:
+                      members:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DealerGroupMember'
+
+  /api/v1/groups/{group_id}/members:
+    post:
+      operationId: addGroupMember
+      summary: Add a dealer to a group
+      tags: [Dealer Groups]
+      parameters:
+        - $ref: '#/components/parameters/GroupIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dealer_id]
+              properties:
+                dealer_id:
+                  type: integer
+      responses:
+        "201":
+          description: Dealer added to group
+        "409":
+          description: Dealer already in group
+
+  # --- V3 Analytics endpoints (Snowflake-powered, CEO dashboard) ---
+
+  /api/v1/analytics/{group_id}/overview:
+    get:
+      operationId: getAnalyticsOverview
+      summary: Get cross-dealer analytics overview for a group
+      description: Reads from Snowflake. Requires group_admin role.
+      tags: [Analytics]
+      parameters:
+        - $ref: '#/components/parameters/GroupIdPath'
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsOverview'
+        "403":
+          description: Requires group_admin role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/analytics/{group_id}/channel-roi:
+    get:
+      operationId: getChannelROI
+      summary: Get per-channel ROI breakdown across group dealers
+      description: Reads from Snowflake materialized view.
+      tags: [Analytics]
+      parameters:
+        - $ref: '#/components/parameters/GroupIdPath'
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChannelROIEntry'
+
+  /api/v1/analytics/{group_id}/model-performance:
+    get:
+      operationId: getModelPerformance
+      summary: Get model accuracy trend over time
+      description: Reads from Snowflake. Shows prediction accuracy by month.
+      tags: [Analytics]
+      parameters:
+        - $ref: '#/components/parameters/GroupIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelPerformanceEntry'
+
+  /api/v1/analytics/{group_id}/dealer-rankings:
+    get:
+      operationId: getDealerRankings
+      summary: Get dealer performance rankings within a group
+      description: Reads from Snowflake dealer_summary view.
+      tags: [Analytics]
+      parameters:
+        - $ref: '#/components/parameters/GroupIdPath'
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [conversion_rate, total_conversions, total_spend]
+            default: conversion_rate
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DealerRanking'
+
+  # --- V1 endpoints carried forward ---
+
+  /api/v1/upload/presigned-url:
+    post:
+      operationId: generatePresignedUrl
+      summary: Generate S3 pre-signed upload URL
+      tags: [Upload]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresignedUrlRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrlResponse'
+
+  /api/v1/scan/{tracking_uuid}:
+    get:
+      operationId: recordQrScan
+      summary: QR scan redirect (public, no auth)
+      tags: [QR Scan]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TrackingUuidPath'
+      responses:
+        "302":
+          description: Redirect to dealer inventory
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "404":
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/v1/campaigns/{dealer_id}:
+    get:
+      operationId: listCampaigns
+      summary: List campaigns with pagination and channel filter
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CampaignStatus'
+        - $ref: '#/components/parameters/ChannelFilter'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+
+  /api/v1/campaigns/{dealer_id}/{campaign_id}:
+    get:
+      operationId: getCampaign
+      summary: Get campaign detail
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/CampaignIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Full campaign detail with compliance result, QR scans, and routing decision
+
+  /api/v1/metrics/{dealer_id}/summary:
+    get:
+      operationId: getDealerMetrics
+      summary: Aggregated dealer metrics with channel breakdown
+      tags: [Metrics]
+      parameters:
+        - $ref: '#/components/parameters/DealerIdPath'
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealerMetricsSummary'
+
+  /api/v1/pipeline/trigger:
+    post:
+      operationId: triggerPipeline
+      summary: Manually trigger pipeline
+      tags: [Pipeline]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineTriggerRequest'
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  execution_id:
+                    type: string
+                  status:
+                    type: string
+
+  /api/v1/pipeline/{execution_id}/status:
+    get:
+      operationId: getPipelineStatus
+      summary: Poll pipeline status
+      tags: [Pipeline]
+      parameters:
+        - $ref: '#/components/parameters/ExecutionIdPath'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineStatus'
+
+  # --- V3 Webhook endpoints ---
+
+  /api/v1/webhooks/twilio:
+    post:
+      operationId: handleTwilioCallback
+      summary: Twilio delivery status webhook
+      description: Receives SMS delivery status updates. Validates Twilio signature.
+      tags: [Webhooks]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                MessageSid:
+                  type: string
+                MessageStatus:
+                  type: string
+                  enum: [queued, sent, delivered, failed, undelivered]
+                ErrorCode:
+                  type: string
+      responses:
+        "204":
+          description: Status recorded
+
+  /api/v1/webhooks/sendgrid:
+    post:
+      operationId: handleSendGridCallback
+      summary: SendGrid event webhook
+      description: Receives email delivery and engagement events.
+      tags: [Webhooks]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  event:
+                    type: string
+                    enum: [delivered, open, click, bounce, dropped, spamreport, unsubscribe]
+                  sg_message_id:
+                    type: string
+                  timestamp:
+                    type: integer
+      responses:
+        "204":
+          description: Events recorded
+
+tags:
+  - name: Auth
+    description: Authentication and user profile
+  - name: Dashboard
+    description: Dealer self-serve dashboard
+  - name: Budget
+    description: Campaign budget approval and tracking
+  - name: Sync
+    description: Aggregator sync monitoring
+  - name: Channel Routing
+    description: Smart channel routing decisions and analytics
+  - name: Model Registry
+    description: ML model version management
+  - name: Dealer Groups
+    description: Auto group management for multi-rooftop CEOs
+  - name: Analytics
+    description: Enterprise CEO analytics (Snowflake-powered)
+  - name: Upload
+    description: CSV upload (V1, still available)
+  - name: QR Scan
+    description: QR code attribution
+  - name: Campaigns
+    description: Campaign records (multi-channel)
+  - name: Metrics
+    description: Performance metrics
+  - name: Pipeline
+    description: Pipeline execution
+  - name: Webhooks
+    description: Third-party delivery status callbacks
